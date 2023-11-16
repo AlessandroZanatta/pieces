@@ -22,7 +22,7 @@ from pieces.torrent import Torrent
 
 class UbuntuTorrentTests(unittest.TestCase):
     def setUp(self):
-        self.t = Torrent('tests/data/ubuntu-16.04-desktop-amd64.iso.torrent')
+        self.t = Torrent("tests/data/ubuntu-16.04-desktop-amd64.iso.torrent")
 
     def test_instantiate(self):
         self.assertIsNotNone(self.t)
@@ -31,24 +31,21 @@ class UbuntuTorrentTests(unittest.TestCase):
         self.assertFalse(self.t.multi_file)
 
     def test_announce(self):
-        self.assertEqual(
-            'http://torrent.ubuntu.com:6969/announce', self.t.announce)
+        self.assertEqual("http://torrent.ubuntu.com:6969/announce", self.t.announce)
 
     def test_piece_length(self):
-        self.assertEqual(
-            524288, self.t.piece_length)
+        self.assertEqual(524288, self.t.piece_length)
 
     def test_file(self):
         self.assertEqual(1, len(self.t.files))
-        self.assertEqual(
-            'ubuntu-16.04-desktop-amd64.iso', self.t.files[0].name)
+        self.assertEqual("ubuntu-16.04-desktop-amd64.iso", self.t.files[0].name)
         self.assertEqual(1485881344, self.t.files[0].length)
 
     def test_hash_value(self):
         # hexdigest of the SHA1 '4344503b7e797ebf31582327a5baae35b11bda01',
         self.assertEqual(
-            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01",
-            self.t.info_hash)
+            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", self.t.info_hash
+        )
 
     def test_total_size(self):
         self.assertEqual(1485881344, self.t.total_size)
@@ -61,6 +58,7 @@ class SXSWTorrentTests(unittest.TestCase):
     """
     Represents a multi-file torrent which is not supported
     """
+
     def test_instantiate(self):
         with self.assertRaises(RuntimeError):
-            Torrent('tests/data/SXSW_2016_Showcasing_Artists_Part1.torrent')
+            Torrent("tests/data/SXSW_2016_Showcasing_Artists_Part1.torrent")

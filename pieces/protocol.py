@@ -58,8 +58,10 @@ class PeerConnection:
     the next available peer from off the queue and try to connect to that one
     instead.
     """
-    def __init__(self, queue: Queue, info_hash,
-                 peer_id, piece_manager, on_block_cb=None):
+
+    def __init__(
+        self, queue: Queue, info_hash, peer_id, piece_manager, on_block_cb=None
+    ):
         """
         Constructs a PeerConnection and add it to the asyncio event-loop.
 
@@ -87,16 +89,15 @@ class PeerConnection:
         self.future = asyncio.ensure_future(self._start())  # Start this worker
 
     async def _start(self):
-        while 'stopped' not in self.my_state:
+        while "stopped" not in self.my_state:
             ip, port = await self.queue.get()
-            logging.info('Got assigned peer with: {ip}'.format(ip=ip))
+            logging.info("Got assigned peer with: {ip}".format(ip=ip))
 
             try:
                 # TODO For some reason it does not seem to work to open a new
                 # connection if the first one drops (i.e. second loop).
-                self.reader, self.writer = await asyncio.open_connection(
-                    ip, port)
-                logging.info('Connection open to peer: {ip}'.format(ip=ip))
+                self.reader, self.writer = await asyncio.open_connection(ip, port)
+                logging.info("Connection open to peer: {ip}".format(ip=ip))
 
                 # It's our responsibility to initiate the handshake.
                 buffer = await self._handshake()
@@ -107,64 +108,63 @@ class PeerConnection:
 
                 # The default state for a connection is that peer is not
                 # interested and we are choked
-                self.my_state.append('choked')
+                self.my_state.append("choked")
 
                 # Let the peer know we're interested in downloading pieces
                 await self._send_interested()
-                self.my_state.append('interested')
+                self.my_state.append("interested")
 
                 # Start reading responses as a stream of messages for as
                 # long as the connection is open and data is transmitted
                 async for message in PeerStreamIterator(self.reader, buffer):
-                    if 'stopped' in self.my_state:
+                    if "stopped" in self.my_state:
                         break
                     if type(message) is BitField:
-                        self.piece_manager.add_peer(self.remote_id,
-                                                    message.bitfield)
+                        self.piece_manager.add_peer(self.remote_id, message.bitfield)
                     elif type(message) is Interested:
-                        self.peer_state.append('interested')
+                        self.peer_state.append("interested")
                     elif type(message) is NotInterested:
-                        if 'interested' in self.peer_state:
-                            self.peer_state.remove('interested')
+                        if "interested" in self.peer_state:
+                            self.peer_state.remove("interested")
                     elif type(message) is Choke:
-                        self.my_state.append('choked')
+                        self.my_state.append("choked")
                     elif type(message) is Unchoke:
-                        if 'choked' in self.my_state:
-                            self.my_state.remove('choked')
+                        if "choked" in self.my_state:
+                            self.my_state.remove("choked")
                     elif type(message) is Have:
-                        self.piece_manager.update_peer(self.remote_id,
-                                                       message.index)
+                        self.piece_manager.update_peer(self.remote_id, message.index)
                     elif type(message) is KeepAlive:
                         pass
                     elif type(message) is Piece:
-                        self.my_state.remove('pending_request')
+                        self.my_state.remove("pending_request")
                         self.on_block_cb(
                             peer_id=self.remote_id,
                             piece_index=message.index,
                             block_offset=message.begin,
-                            data=message.block)
+                            data=message.block,
+                        )
                     elif type(message) is Request:
                         # TODO Add support for sending data
-                        logging.info('Ignoring the received Request message.')
+                        logging.info("Ignoring the received Request message.")
                     elif type(message) is Cancel:
                         # TODO Add support for sending data
-                        logging.info('Ignoring the received Cancel message.')
+                        logging.info("Ignoring the received Cancel message.")
 
                     # Send block request to remote peer if we're interested
-                    if 'choked' not in self.my_state:
-                        if 'interested' in self.my_state:
-                            if 'pending_request' not in self.my_state:
-                                self.my_state.append('pending_request')
+                    if "choked" not in self.my_state:
+                        if "interested" in self.my_state:
+                            if "pending_request" not in self.my_state:
+                                self.my_state.append("pending_request")
                                 await self._request_piece()
 
             except ProtocolError as e:
-                logging.exception('Protocol error')
+                logging.exception("Protocol error")
             except (ConnectionRefusedError, TimeoutError):
-                logging.warning('Unable to connect to peer')
+                logging.warning("Unable to connect to peer")
             except (ConnectionResetError, CancelledError):
-                logging.warning('Connection closed')
+                logging.warning("Connection closed")
             except Exception as e:
-                logging.exception('An error occurred')
+                logging.exception("An error occurred")
                 self.cancel()
                 raise e
             self.cancel()
@@ -173,7 +173,7 @@ class PeerConnection:
         """
         Sends the cancel message to the remote peer and closes the connection.
         """
-        logging.info('Closing peer {id}'.format(id=self.remote_id))
+        logging.info("Closing peer {id}".format(id=self.remote_id))
         if not self.future.done():
             self.future.cancel()
         if self.writer:
@@ -189,7 +189,7 @@ class PeerConnection:
         # Set state to stopped and cancel our future to break out of the loop.
         # The rest of the cleanup will eventually be managed by loop calling
         # `cancel`.
-        self.my_state.append('stopped')
+        self.my_state.append("stopped")
         if not self.future.done():
             self.future.cancel()
 
@@ -198,12 +198,15 @@ class PeerConnection:
         if block:
             message = Request(block.piece, block.offset, block.length).encode()
 
-            logging.debug('Requesting block {block} for piece {piece} '
-                          'of {length} bytes from peer {peer}'.format(
-                            piece=block.piece,
-                            block=block.offset,
-                            length=block.length,
-                            peer=self.remote_id))
+            logging.debug(
+                "Requesting block {block} for piece {piece} "
+                "of {length} bytes from peer {peer}".format(
+                    piece=block.piece,
+                    block=block.offset,
+                    length=block.length,
+                    peer=self.remote_id,
+                )
+            )
 
             self.writer.write(message)
             await self.writer.drain()
@@ -216,31 +219,31 @@ class PeerConnection:
         self.writer.write(Handshake(self.info_hash, self.peer_id).encode())
         await self.writer.drain()
 
-        buf = b''
+        buf = b""
         tries = 1
         while len(buf) < Handshake.length and tries < 10:
             tries += 1
             buf = await self.reader.read(PeerStreamIterator.CHUNK_SIZE)
 
-        response = Handshake.decode(buf[:Handshake.length])
+        response = Handshake.decode(buf[: Handshake.length])
         if not response:
-            raise ProtocolError('Unable receive and parse a handshake')
+            raise ProtocolError("Unable receive and parse a handshake")
         if not response.info_hash == self.info_hash:
-            raise ProtocolError('Handshake with invalid info_hash')
+            raise ProtocolError("Handshake with invalid info_hash")
 
         # TODO: According to spec we should validate that the peer_id received
         # from the peer match the peer_id received from the tracker.
         self.remote_id = response.peer_id
-        logging.info('Handshake with peer was successful')
+        logging.info("Handshake with peer was successful")
 
         # We need to return the remaining buffer data, since we might have
         # read more bytes then the size of the handshake message and we need
         # those bytes to parse the next message.
-        return buf[Handshake.length:]
+        return buf[Handshake.length :]
 
     async def _send_interested(self):
         message = Interested()
-        logging.debug('Sending message: {type}'.format(type=message))
+        logging.debug("Sending message: {type}".format(type=message))
         self.writer.write(message.encode())
         await self.writer.drain()
 
@@ -254,11 +257,12 @@ class PeerStreamIterator:
     If the connection is dropped, something fails the iterator will abort by
     raising the `StopAsyncIteration` error ending the calling iteration.
     """
-    CHUNK_SIZE = 10*1024
 
-    def __init__(self, reader, initial: bytes=None):
+    CHUNK_SIZE = 10 * 1024
+
+    def __init__(self, reader, initial: bytes = None):
         self.reader = reader
-        self.buffer = initial if initial else b''
+        self.buffer = initial if initial else b""
 
     async def __aiter__(self):
         return self
@@ -275,14 +279,14 @@ class PeerStreamIterator:
                     if message:
                         return message
                 else:
-                    logging.debug('No data read from stream')
+                    logging.debug("No data read from stream")
                     if self.buffer:
                         message = self.parse()
                         if message:
                             return message
                     raise StopAsyncIteration()
             except ConnectionResetError:
-                logging.debug('Connection closed by peer')
+                logging.debug("Connection closed by peer")
                 raise StopAsyncIteration()
             except CancelledError:
                 raise StopAsyncIteration()
@@ -290,7 +294,7 @@ class PeerStreamIterator:
                 # Cath to stop logging
                 raise e
             except Exception:
-                logging.exception('Error when iterating over stream!')
+                logging.exception("Error when iterating over stream!")
                 raise StopAsyncIteration()
         raise StopAsyncIteration()
 
@@ -313,21 +317,21 @@ class PeerStreamIterator:
         header_length = 4
 
         if len(self.buffer) > 4:  # 4 bytes is needed to identify the message
-            message_length = struct.unpack('>I', self.buffer[0:4])[0]
+            message_length = struct.unpack(">I", self.buffer[0:4])[0]
 
             if message_length == 0:
                 return KeepAlive()
 
             if len(self.buffer) >= message_length:
-                message_id = struct.unpack('>b', self.buffer[4:5])[0]
+                message_id = struct.unpack(">b", self.buffer[4:5])[0]
 
                 def _consume():
                     """Consume the current message from the read buffer"""
-                    self.buffer = self.buffer[header_length + message_length:]
+                    self.buffer = self.buffer[header_length + message_length :]
 
                 def _data():
-                    """"Extract the current message from the read buffer"""
-                    return self.buffer[:header_length + message_length]
+                    """ "Extract the current message from the read buffer"""
+                    return self.buffer[: header_length + message_length]
 
                 if message_id is PeerMessage.BitField:
                     data = _data()
@@ -362,9 +366,9 @@ class PeerStreamIterator:
                     _consume()
                     return Cancel.decode(data)
                 else:
-                    logging.info('Unsupported message!')
+                    logging.info("Unsupported message!")
             else:
-                logging.debug('Not enough in buffer in order to parse')
+                logging.debug("Not enough in buffer in order to parse")
         return None
 
 
@@ -389,6 +393,7 @@ class PeerMessage:
     declared as the first character being '>' in all pack / unpack calls to the
     Python's `struct` module.
     """
+
     Choke = 0
     Unchoke = 1
     Interested = 2
@@ -436,6 +441,7 @@ class Handshake(PeerMessage):
     Thus length is:
         49 + len(pstr) = 68 bytes long.
     """
+
     length = 49 + 19
 
     def __init__(self, info_hash: bytes, peer_id: bytes):
@@ -446,9 +452,9 @@ class Handshake(PeerMessage):
         :param peer_id: The unique peer id
         """
         if isinstance(info_hash, str):
-            info_hash = info_hash.encode('utf-8')
+            info_hash = info_hash.encode("utf-8")
         if isinstance(peer_id, str):
-            peer_id = peer_id.encode('utf-8')
+            peer_id = peer_id.encode("utf-8")
         self.info_hash = info_hash
         self.peer_id = peer_id
 
@@ -458,12 +464,13 @@ class Handshake(PeerMessage):
         message (ready to be transmitted).
         """
         return struct.pack(
-            '>B19s8x20s20s',
-            19,                         # Single byte (B)
-            b'BitTorrent protocol',     # String 19s
-                                        # Reserved 8x (pad byte, no value)
-            self.info_hash,             # String 20s
-            self.peer_id)               # String 20s
+            ">B19s8x20s20s",
+            19,  # Single byte (B)
+            b"BitTorrent protocol",  # String 19s
+            # Reserved 8x (pad byte, no value)
+            self.info_hash,  # String 20s
+            self.peer_id,
+        )  # String 20s
 
     @classmethod
     def decode(cls, data: bytes):
@@ -471,15 +478,14 @@ class Handshake(PeerMessage):
         Decodes the given BitTorrent message into a handshake message, if not
         a valid message, None is returned.
         """
-        logging.debug('Decoding Handshake of length: {length}'.format(
-            length=len(data)))
+        logging.debug("Decoding Handshake of length: {length}".format(length=len(data)))
         if len(data) < (49 + 19):
             return None
-        parts = struct.unpack('>B19s8x20s20s', data)
+        parts = struct.unpack(">B19s8x20s20s", data)
         return cls(info_hash=parts[2], peer_id=parts[3])
 
     def __str__(self):
-        return 'Handshake'
+        return "Handshake"
 
 
 class KeepAlive(PeerMessage):
@@ -489,8 +495,9 @@ class KeepAlive(PeerMessage):
     Message format:
         <len=0000>
     """
+
     def __str__(self):
-        return 'KeepAlive'
+        return "KeepAlive"
 
 
 class BitField(PeerMessage):
@@ -501,6 +508,7 @@ class BitField(PeerMessage):
     Message format:
         <len=0001+X><id=5><bitfield>
     """
+
     def __init__(self, data):
         self.bitfield = bitstring.BitArray(bytes=data)
 
@@ -510,22 +518,25 @@ class BitField(PeerMessage):
         message (ready to be transmitted).
         """
         bits_length = len(self.bitfield)
-        return struct.pack('>Ib' + str(bits_length) + 's',
-                           1 + bits_length,
-                           PeerMessage.BitField,
-                           self.bitfield)
+        return struct.pack(
+            ">Ib" + str(bits_length) + "s",
+            1 + bits_length,
+            PeerMessage.BitField,
+            self.bitfield,
+        )
 
     @classmethod
     def decode(cls, data: bytes):
-        message_length = struct.unpack('>I', data[:4])[0]
-        logging.debug('Decoding BitField of length: {length}'.format(
-            length=message_length))
+        message_length = struct.unpack(">I", data[:4])[0]
+        logging.debug(
+            "Decoding BitField of length: {length}".format(length=message_length)
+        )
 
-        parts = struct.unpack('>Ib' + str(message_length - 1) + 's', data)
+        parts = struct.unpack(">Ib" + str(message_length - 1) + "s", data)
         return cls(parts[2])
 
     def __str__(self):
-        return 'BitField'
+        return "BitField"
 
 
 class Interested(PeerMessage):
@@ -543,12 +554,10 @@ class Interested(PeerMessage):
         Encodes this object instance to the raw bytes representing the entire
         message (ready to be transmitted).
         """
-        return struct.pack('>Ib',
-                           1,  # Message length
-                           PeerMessage.Interested)
+        return struct.pack(">Ib", 1, PeerMessage.Interested)  # Message length
 
     def __str__(self):
-        return 'Interested'
+        return "Interested"
 
 
 class NotInterested(PeerMessage):
@@ -560,8 +569,9 @@ class NotInterested(PeerMessage):
     Message format:
         <len=0001><id=3>
     """
+
     def __str__(self):
-        return 'NotInterested'
+        return "NotInterested"
 
 
 class Choke(PeerMessage):
@@ -572,8 +582,9 @@ class Choke(PeerMessage):
     Message format:
         <len=0001><id=0>
     """
+
     def __str__(self):
-        return 'Choke'
+        return "Choke"
 
 
 class Unchoke(PeerMessage):
@@ -584,8 +595,9 @@ class Unchoke(PeerMessage):
     Message format:
         <len=0001><id=1>
     """
+
     def __str__(self):
-        return 'Unchoke'
+        return "Unchoke"
 
 
 class Have(PeerMessage):
@@ -593,24 +605,21 @@ class Have(PeerMessage):
     Represents a piece successfully downloaded by the remote peer. The piece
     is a zero based index of the torrents pieces
     """
+
     def __init__(self, index: int):
         self.index = index
 
     def encode(self):
-        return struct.pack('>IbI',
-                           5,  # Message length
-                           PeerMessage.Have,
-                           self.index)
+        return struct.pack(">IbI", 5, PeerMessage.Have, self.index)  # Message length
 
     @classmethod
     def decode(cls, data: bytes):
-        logging.debug('Decoding Have of length: {length}'.format(
-            length=len(data)))
-        index = struct.unpack('>IbI', data)[2]
+        logging.debug("Decoding Have of length: {length}".format(length=len(data)))
+        index = struct.unpack(">IbI", data)[2]
         return cls(index)
 
     def __str__(self):
-        return 'Have'
+        return "Have"
 
 
 class Request(PeerMessage):
@@ -624,6 +633,7 @@ class Request(PeerMessage):
     Message format:
         <len=0013><id=6><index><begin><length>
     """
+
     def __init__(self, index: int, begin: int, length: int = REQUEST_SIZE):
         """
         Constructs the Request message.
@@ -637,23 +647,19 @@ class Request(PeerMessage):
         self.length = length
 
     def encode(self):
-        return struct.pack('>IbIII',
-                           13,
-                           PeerMessage.Request,
-                           self.index,
-                           self.begin,
-                           self.length)
+        return struct.pack(
+            ">IbIII", 13, PeerMessage.Request, self.index, self.begin, self.length
+        )
 
     @classmethod
     def decode(cls, data: bytes):
-        logging.debug('Decoding Request of length: {length}'.format(
-            length=len(data)))
+        logging.debug("Decoding Request of length: {length}".format(length=len(data)))
         # Tuple with (message length, id, index, begin, length)
-        parts = struct.unpack('>IbIII', data)
+        parts = struct.unpack(">IbIII", data)
         return cls(parts[2], parts[3], parts[4])
 
     def __str__(self):
-        return 'Request'
+        return "Request"
 
 
 class Piece(PeerMessage):
@@ -668,6 +674,7 @@ class Piece(PeerMessage):
     Message format:
         <length prefix><message ID><index><begin><block>
     """
+
     # The Piece message length without the block data
     length = 9
 
@@ -685,24 +692,26 @@ class Piece(PeerMessage):
 
     def encode(self):
         message_length = Piece.length + len(self.block)
-        return struct.pack('>IbII' + str(len(self.block)) + 's',
-                           message_length,
-                           PeerMessage.Piece,
-                           self.index,
-                           self.begin,
-                           self.block)
+        return struct.pack(
+            ">IbII" + str(len(self.block)) + "s",
+            message_length,
+            PeerMessage.Piece,
+            self.index,
+            self.begin,
+            self.block,
+        )
 
     @classmethod
     def decode(cls, data: bytes):
-        logging.debug('Decoding Piece of length: {length}'.format(
-            length=len(data)))
-        length = struct.unpack('>I', data[:4])[0]
-        parts = struct.unpack('>IbII' + str(length - Piece.length) + 's',
-                              data[:length+4])
+        logging.debug("Decoding Piece of length: {length}".format(length=len(data)))
+        length = struct.unpack(">I", data[:4])[0]
+        parts = struct.unpack(
+            ">IbII" + str(length - Piece.length) + "s", data[: length + 4]
+        )
         return cls(parts[2], parts[3], parts[4])
 
     def __str__(self):
-        return 'Piece'
+        return "Piece"
 
 
 class Cancel(PeerMessage):
@@ -713,26 +722,23 @@ class Cancel(PeerMessage):
     Message format:
          <len=0013><id=8><index><begin><length>
     """
+
     def __init__(self, index, begin, length: int = REQUEST_SIZE):
         self.index = index
         self.begin = begin
         self.length = length
 
     def encode(self):
-        return struct.pack('>IbIII',
-                           13,
-                           PeerMessage.Cancel,
-                           self.index,
-                           self.begin,
-                           self.length)
+        return struct.pack(
+            ">IbIII", 13, PeerMessage.Cancel, self.index, self.begin, self.length
+        )
 
     @classmethod
     def decode(cls, data: bytes):
-        logging.debug('Decoding Cancel of length: {length}'.format(
-            length=len(data)))
+        logging.debug("Decoding Cancel of length: {length}".format(length=len(data)))
         # Tuple with (message length, id, index, begin, length)
-        parts = struct.unpack('>IbIII', data)
+        parts = struct.unpack(">IbIII", data)
         return cls(parts[2], parts[3], parts[4])
 
     def __str__(self):
-        return 'Cancel'
+        return "Cancel"

@@ -25,6 +25,7 @@ class NoLogging:
     with NoLogging():
         call_logging_function()
     """
+
     def __enter__(self):
         logger = logging.getLogger()
         logger.disabled = True
@@ -33,8 +34,10 @@ class NoLogging:
         logger = logging.getLogger()
         logger.disabled = False
 
+
 no_logging = NoLogging()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import unittest
+
     unittest.main()

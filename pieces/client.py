@@ -46,6 +46,7 @@ class TorrentClient:
     (or worse yet processes) we can create them all at once and they will
     be waiting until there is a peer to consume in the queue.
     """
+
     def __init__(self, torrent):
         self.tracker = Tracker(torrent)
         # The list of potential peers is the work queue, consumed by the
@@ -68,24 +69,28 @@ class TorrentClient:
         peers to communicate with. Once the torrent is fully downloaded or
         if the download is aborted this method will complete.
         """
-        self.peers = [PeerConnection(self.available_peers,
-                                     self.tracker.torrent.info_hash,
-                                     self.tracker.peer_id,
-                                     self.piece_manager,
-                                     self._on_block_retrieved)
-                      for _ in range(MAX_PEER_CONNECTIONS)]
+        self.peers = [
+            PeerConnection(
+                self.available_peers,
+                self.tracker.torrent.info_hash,
+                self.tracker.peer_id,
+                self.piece_manager,
+                self._on_block_retrieved,
+            )
+            for _ in range(MAX_PEER_CONNECTIONS)
+        ]
 
         # The time we last made an announce call (timestamp)
         previous = None
         # Default interval between announce calls (in seconds)
-        interval = 30*60
+        interval = 30 * 60
 
         while True:
             if self.piece_manager.complete:
-                logging.info('Torrent fully downloaded!')
+                logging.info("Torrent fully downloaded!")
                 break
             if self.abort:
-                logging.info('Aborting download...')
+                logging.info("Aborting download...")
                 break
 
             current = time.time()
@@ -93,7 +98,8 @@ class TorrentClient:
                 response = await self.tracker.connect(
                     first=previous if previous else False,
                     uploaded=self.piece_manager.bytes_uploaded,
-                    downloaded=self.piece_manager.bytes_downloaded)
+                    downloaded=self.piece_manager.bytes_downloaded,
+                )
 
                 if response:
                     previous = current
@@ -130,8 +136,11 @@ class TorrentClient:
         :param data: The binary data retrieved
         """
         self.piece_manager.block_received(
-            peer_id=peer_id, piece_index=piece_index,
-            block_offset=block_offset, data=data)
+            peer_id=peer_id,
+            piece_index=piece_index,
+            block_offset=block_offset,
+            data=data,
+        )
 
 
 class Block:
@@ -142,6 +151,7 @@ class Block:
     A block is most often of the same size as the REQUEST_SIZE, except for the
     final block which might (most likely) is smaller than REQUEST_SIZE.
     """
+
     Missing = 0
     Pending = 1
     Retrieved = 2
@@ -164,6 +174,7 @@ class Piece:
     to as `Block` by the unofficial specification (the official specification
     uses piece for this one as well, which is slightly confusing).
     """
+
     def __init__(self, index: int, blocks: [], hash_value):
         self.index = index
         self.blocks = blocks
@@ -199,8 +210,9 @@ class Piece:
             block.status = Block.Retrieved
             block.data = data
         else:
-            logging.warning('Trying to complete a non-existing block {offset}'
-                            .format(offset=offset))
+            logging.warning(
+                "Trying to complete a non-existing block {offset}".format(offset=offset)
+            )
 
     def is_complete(self) -> bool:
         """
@@ -231,10 +243,11 @@ class Piece:
         """
         retrieved = sorted(self.blocks, key=lambda b: b.offset)
         blocks_data = [b.data for b in retrieved]
-        return b''.join(blocks_data)
+        return b"".join(blocks_data)
+
 
 # The type used for keeping track of pending request that can be re-issued
-PendingRequest = namedtuple('PendingRequest', ['block', 'added'])
+PendingRequest = namedtuple("PendingRequest", ["block", "added"])
 
 
 class PieceManager:
@@ -246,6 +259,7 @@ class PieceManager:
     The strategy on which piece to request is made as simple as possible in
     this implementation.
     """
+
     def __init__(self, torrent):
         self.torrent = torrent
         self.peers = {}
@@ -256,7 +270,7 @@ class PieceManager:
         self.max_pending_time = 300 * 1000  # 5 minutes
         self.missing_pieces = self._initiate_pieces()
         self.total_pieces = len(torrent.pieces)
-        self.fd = os.open(self.torrent.output_file,  os.O_RDWR | os.O_CREAT)
+        self.fd = os.open(self.torrent.output_file, os.O_RDWR | os.O_CREAT)
 
     def _initiate_pieces(self) -> [Piece]:
         """
@@ -275,13 +289,17 @@ class PieceManager:
             # than 'regular' pieces, and that final block might be smaller
             # then the other blocks.
             if index < (total_pieces - 1):
-                blocks = [Block(index, offset * REQUEST_SIZE, REQUEST_SIZE)
-                          for offset in range(std_piece_blocks)]
+                blocks = [
+                    Block(index, offset * REQUEST_SIZE, REQUEST_SIZE)
+                    for offset in range(std_piece_blocks)
+                ]
             else:
                 last_length = torrent.total_size % torrent.piece_length
                 num_blocks = math.ceil(last_length / REQUEST_SIZE)
-                blocks = [Block(index, offset * REQUEST_SIZE, REQUEST_SIZE)
-                          for offset in range(num_blocks)]
+                blocks = [
+                    Block(index, offset * REQUEST_SIZE, REQUEST_SIZE)
+                    for offset in range(num_blocks)
+                ]
 
                 if last_length % REQUEST_SIZE > 0:
                     # Last block of the last piece might be smaller than
@@ -382,15 +400,19 @@ class PieceManager:
         be fetched again. If the hash succeeds the partial piece is written to
         disk and the piece is indicated as Have.
         """
-        logging.debug('Received block {block_offset} for piece {piece_index} '
-                      'from peer {peer_id}: '.format(block_offset=block_offset,
-                                                     piece_index=piece_index,
-                                                     peer_id=peer_id))
+        logging.debug(
+            "Received block {block_offset} for piece {piece_index} "
+            "from peer {peer_id}: ".format(
+                block_offset=block_offset, piece_index=piece_index, peer_id=peer_id
+            )
+        )
 
         # Remove from pending requests
         for index, request in enumerate(self.pending_blocks):
-            if request.block.piece == piece_index and \
-               request.block.offset == block_offset:
+            if (
+                request.block.piece == piece_index
+                and request.block.offset == block_offset
+            ):
                 del self.pending_blocks[index]
                 break
 
@@ -403,20 +425,25 @@ class PieceManager:
                     self._write(piece)
                     self.ongoing_pieces.remove(piece)
                     self.have_pieces.append(piece)
-                    complete = (self.total_pieces -
-                                len(self.missing_pieces) -
-                                len(self.ongoing_pieces))
+                    complete = (
+                        self.total_pieces
+                        - len(self.missing_pieces)
+                        - len(self.ongoing_pieces)
+                    )
                     logging.info(
-                        '{complete} / {total} pieces downloaded {per:.3f} %'
-                        .format(complete=complete,
-                                total=self.total_pieces,
-                                per=(complete/self.total_pieces)*100))
+                        "{complete} / {total} pieces downloaded {per:.3f} %".format(
+                            complete=complete,
+                            total=self.total_pieces,
+                            per=(complete / self.total_pieces) * 100,
+                        )
+                    )
                 else:
-                    logging.info('Discarding corrupt piece {index}'
-                                 .format(index=piece.index))
+                    logging.info(
+                        "Discarding corrupt piece {index}".format(index=piece.index)
+                    )
                     piece.reset()
         else:
-            logging.warning('Trying to update piece that is not ongoing!')
+            logging.warning("Trying to update piece that is not ongoing!")
 
     def _expired_requests(self, peer_id) -> Block:
         """
@@ -430,10 +457,12 @@ class PieceManager:
         for request in self.pending_blocks:
             if self.peers[peer_id][request.block.piece]:
                 if request.added + self.max_pending_time < current:
-                    logging.info('Re-requesting block {block} for '
-                                 'piece {piece}'.format(
-                                    block=request.block.offset,
-                                    piece=request.block.piece))
+                    logging.info(
+                        "Re-requesting block {block} for "
+                        "piece {piece}".format(
+                            block=request.block.offset, piece=request.block.piece
+                        )
+                    )
                     # Reset expiration timer
                     request.added = current
                     return request.block
@@ -450,7 +479,8 @@ class PieceManager:
                 block = piece.next_request()
                 if block:
                     self.pending_blocks.append(
-                        PendingRequest(block, int(round(time.time() * 1000))))
+                        PendingRequest(block, int(round(time.time() * 1000)))
+                    )
                     return block
         return None
 
