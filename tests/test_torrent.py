@@ -44,7 +44,7 @@ class UbuntuTorrentTests(unittest.TestCase):
     def test_hash_value(self):
         # hexdigest of the SHA1 '4344503b7e797ebf31582327a5baae35b11bda01',
         self.assertEqual(
-            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", self.t.info_hash
+            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", self.t.info_hash,
         )
 
     def test_total_size(self):
@@ -55,8 +55,7 @@ class UbuntuTorrentTests(unittest.TestCase):
 
 
 class SXSWTorrentTests(unittest.TestCase):
-    """
-    Represents a multi-file torrent which is not supported
+    """Represents a multi-file torrent which is not supported
     """
 
     def test_instantiate(self):

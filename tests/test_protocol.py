@@ -18,13 +18,13 @@
 import unittest
 
 from pieces.protocol import (
-    PeerStreamIterator,
+    Cancel,
     Handshake,
     Have,
-    Request,
-    Piece,
     Interested,
-    Cancel,
+    PeerStreamIterator,
+    Piece,
+    Request,
 )
 
 
@@ -53,11 +53,11 @@ class HandshakeTests(unittest.TestCase):
         handshake = Handshake.decode(
             b"\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00"
             b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01"
-            b"-qB3200-iTiX3rvfzMpr"
+            b"-qB3200-iTiX3rvfzMpr",
         )
 
         self.assertEqual(
-            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", handshake.info_hash
+            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", handshake.info_hash,
         )
         self.assertEqual(b"-qB3200-iTiX3rvfzMpr", handshake.peer_id)
 
@@ -83,7 +83,7 @@ class RequestTests(unittest.TestCase):
 
     def test_can_parse_request(self):
         request = Request.decode(
-            b"\x00\x00\x00\r\x06\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00@\x00"
+            b"\x00\x00\x00\r\x06\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00@\x00",
         )
 
         self.assertEqual(request.index, 0)
@@ -95,7 +95,7 @@ class PieceTests(unittest.TestCase):
         piece = Piece(0, 0, b"ok")
 
         self.assertEqual(
-            piece.encode(), b"\x00\x00\x00\x0b\x07\x00\x00\x00\x00\x00\x00\x00\x00ok"
+            piece.encode(), b"\x00\x00\x00\x0b\x07\x00\x00\x00\x00\x00\x00\x00\x00ok",
         )
 
     def test_can_parse_request(self):
@@ -125,7 +125,7 @@ class CancelTests(unittest.TestCase):
 
     def test_can_decode(self):
         message = Cancel.decode(
-            b"\x00\x00\x00\r\x08\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00@\x00"
+            b"\x00\x00\x00\r\x08\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00@\x00",
         )
 
         self.assertEqual(message.index, 0)

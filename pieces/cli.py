@@ -16,39 +16,100 @@
 # limitations under the License.
 
 import argparse
-import asyncio
-import signal
 import logging
+import os
+import sys
 
-from concurrent.futures import CancelledError
+import Pyro5.api  # type: ignore
+import Pyro5.errors  # type: ignore
 
-from pieces.torrent import Torrent
-from pieces.client import TorrentClient
+from pieces.daemon import Daemon
+
+DEFAULT_DOWNLOAD_DIR = os.getenv("DEFAULT_DOWNLOAD_DIR", "/downloads")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("torrent", help="the .torrent to download")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="enable verbose output"
+def daemon() -> Pyro5.api.Proxy:
+    return Pyro5.api.Proxy("PYRONAME:daemon")
+
+
+def start_daemon(_: argparse.Namespace) -> None:
+    Daemon.run()
+
+
+# def stop_daemon(_):
+#     daemon().stop()
+
+
+def start_download(args: argparse.Namespace) -> None:
+    daemon().start_download(args.torrent, args.download_dir)
+
+
+def get_status(_: argparse.Namespace) -> None:
+    print(daemon().get_status())  # noqa: T201
+
+
+def start_seeding(args: argparse.Namespace) -> None:
+    daemon().start_seeding(args.torrent, args.source)
+
+
+def main() -> int:
+    daemon_parser = argparse.ArgumentParser()
+    daemon_subparsers = daemon_parser.add_subparsers()
+    daemon_parser.set_defaults(
+        func=lambda _: print('Use option "--help" to show usage.'),  # noqa: T201
+    )
+    daemon_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="enable verbose output",
     )
 
-    args = parser.parse_args()
+    daemon_parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="enable debug output",
+    )
+
+    p = daemon_subparsers.add_parser("start", help="Start the daemon")
+    p.set_defaults(func=start_daemon)
+
+    p = daemon_subparsers.add_parser("status", help="Get status of torrent")
+    p.set_defaults(func=get_status)
+
+    # p = daemon_subparsers.add_parser("stop", help="Stop the daemon")
+    # p.set_defaults(func=stop_daemon)
+
+    p = daemon_subparsers.add_parser("add", help="Start downloading a torrent file")
+    p.add_argument("torrent", help="The .torrent metainfo file")
+    p.add_argument(
+        "-d",
+        "--download-dir",
+        default=DEFAULT_DOWNLOAD_DIR,
+        help="The download directory for the torrent",
+    )
+    p.set_defaults(func=start_download)
+
+    p = daemon_subparsers.add_parser("seed", help="Start seeding a torrent file")
+    p.add_argument("torrent", help="The .torrent metainfo file")
+    p.add_argument("source", help="The corresponding file to be shared")
+    p.set_defaults(func=start_seeding)
+
+    args = daemon_parser.parse_args()
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
-
-    loop = asyncio.get_event_loop()
-    client = TorrentClient(Torrent(args.torrent))
-    task = loop.create_task(client.start())
-
-    def signal_handler(*_):
-        logging.info("Exiting, please wait until everything is shutdown...")
-        client.stop()
-        task.cancel()
-
-    signal.signal(signal.SIGINT, signal_handler)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     try:
-        loop.run_until_complete(task)
-    except CancelledError:
-        logging.warning("Event loop was canceled")
+        args.func(args)
+    except Exception:
+        logging.exception("Pyro traceback:")
+        logging.exception("".join(Pyro5.errors.get_pyro_traceback()))
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

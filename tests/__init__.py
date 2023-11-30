@@ -19,8 +19,7 @@ import logging
 
 
 class NoLogging:
-    """
-    Contextual manager that can be used to disable logging.
+    """Contextual manager that can be used to disable logging.
 
     with NoLogging():
         call_logging_function()

@@ -17,8 +17,9 @@
 
 import unittest
 
+from pieces.client import Block, Piece
+
 from . import no_logging
-from pieces.client import Piece, Block
 
 
 class PieceTests(unittest.TestCase):

@@ -17,7 +17,6 @@
 
 from collections import OrderedDict
 
-
 # Indicates start of integers
 TOKEN_INTEGER = b"i"
 
@@ -35,86 +34,83 @@ TOKEN_STRING_SEPARATOR = b":"
 
 
 class Decoder:
-    """
-    Decodes a bencoded sequence of bytes.
-    """
+    """Decodes a bencoded sequence of bytes."""
 
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes) -> None:
         if not isinstance(data, bytes):
-            raise TypeError('Argument "data" must be of type bytes')
+            msg = 'Argument "data" must be of type bytes'
+            raise TypeError(msg)
         self._data = data
         self._index = 0
 
-    def decode(self):
-        """
-        Decodes the bencoded data and return the matching python object.
+    def decode(self) -> list | dict | int | bytes | None:
+        """Decodes the bencoded data and return the matching python object.
 
         :return A python object representing the bencoded data
         """
         c = self._peek()
         if c is None:
-            raise EOFError("Unexpected end-of-file")
-        elif c == TOKEN_INTEGER:
+            msg = "Unexpected end-of-file"
+            raise EOFError(msg)
+
+        if c == TOKEN_INTEGER:
             self._consume()  # The token
             return self._decode_int()
-        elif c == TOKEN_LIST:
+        if c == TOKEN_LIST:
             self._consume()  # The token
             return self._decode_list()
-        elif c == TOKEN_DICT:
+        if c == TOKEN_DICT:
             self._consume()  # The token
             return self._decode_dict()
-        elif c == TOKEN_END:
+        if c == TOKEN_END:
             return None
-        elif c in b"01234567899":
+        if c in b"01234567899":
             return self._decode_string()
-        else:
-            raise RuntimeError("Invalid token read at {0}".format(str(self._index)))
+        msg = f"Invalid token read at {self._index!s}"
+        raise RuntimeError(msg)
 
-    def _peek(self):
-        """
-        Return the next character from the bencoded data or None
-        """
+    def _peek(self) -> bytes | None:
+        """Return the next character from the bencoded data or None."""
         if self._index + 1 >= len(self._data):
             return None
         return self._data[self._index : self._index + 1]
 
-    def _consume(self) -> bytes:
-        """
-        Read (and therefore consume) the next character from the data
-        """
+    def _consume(self) -> None:
+        """Read (and therefore consume) the next character from the data."""
         self._index += 1
 
     def _read(self, length: int) -> bytes:
-        """
-        Read the `length` number of bytes from data and return the result
-        """
+        """Read the `length` number of bytes from data and return the result."""
         if self._index + length > len(self._data):
+            msg = "Cannot read {} bytes from current position {}".format(
+                str(length),
+                str(self._index),
+            )
             raise IndexError(
-                "Cannot read {0} bytes from current position {1}".format(
-                    str(length), str(self._index)
-                )
+                msg,
             )
         res = self._data[self._index : self._index + length]
         self._index += length
         return res
 
     def _read_until(self, token: bytes) -> bytes:
-        """
-        Read from the bencoded data until the given token is found and return
+        """Read from the bencoded data until the given token is found and return
         the characters read.
         """
         try:
             occurrence = self._data.index(token, self._index)
+        except ValueError as e:
+            msg = f"Unable to find token {token!s}"
+            raise RuntimeError(msg) from e
+        else:
             result = self._data[self._index : occurrence]
             self._index = occurrence + 1
             return result
-        except ValueError:
-            raise RuntimeError("Unable to find token {0}".format(str(token)))
 
-    def _decode_int(self):
+    def _decode_int(self) -> int:
         return int(self._read_until(TOKEN_END))
 
-    def _decode_list(self):
+    def _decode_list(self) -> list:
         res = []
         # Recursive decode the content of the list
         while self._data[self._index : self._index + 1] != TOKEN_END:
@@ -122,7 +118,7 @@ class Decoder:
         self._consume()  # The END token
         return res
 
-    def _decode_dict(self):
+    def _decode_dict(self) -> dict:
         res = OrderedDict()
         while self._data[self._index : self._index + 1] != TOKEN_END:
             key = self.decode()
@@ -131,15 +127,13 @@ class Decoder:
         self._consume()  # The END token
         return res
 
-    def _decode_string(self):
+    def _decode_string(self) -> bytes:
         bytes_to_read = int(self._read_until(TOKEN_STRING_SEPARATOR))
-        data = self._read(bytes_to_read)
-        return data
+        return self._read(bytes_to_read)
 
 
 class Encoder:
-    """
-    Encodes a python object to a bencoded sequence of bytes.
+    """Encodes a python object to a bencoded sequence of bytes.
 
     Supported python types is:
         - str
@@ -151,46 +145,48 @@ class Encoder:
     Any other type will simply be ignored.
     """
 
-    def __init__(self, data):
+    def __init__(self, data: list | dict | int | bytes) -> None:
         self._data = data
 
     def encode(self) -> bytes:
-        """
-        Encode a python object to a bencoded binary string
+        """Encode a python object to a bencoded binary string.
 
         :return The bencoded binary data
         """
         return self.encode_next(self._data)
 
-    def encode_next(self, data):
-        if type(data) == str:
+    def encode_next(
+        self,
+        data: str | int | list | dict | OrderedDict | bytes,
+    ) -> bytes:
+        if isinstance(data, str):
             return self._encode_string(data)
-        elif type(data) == int:
+        if isinstance(data, int):
             return self._encode_int(data)
-        elif type(data) == list:
+        if isinstance(data, list):
             return self._encode_list(data)
-        elif type(data) == dict or type(data) == OrderedDict:
+        if isinstance(data, OrderedDict | dict):
             return self._encode_dict(data)
-        elif type(data) == bytes:
+        if isinstance(data, bytes):
             return self._encode_bytes(data)
-        else:
-            return None
+        msg = f"Cannot bencode {type(data)}"
+        raise TypeError(msg)
 
-    def _encode_int(self, value):
+    def _encode_int(self, value: int) -> bytes:
         return str.encode("i" + str(value) + "e")
 
-    def _encode_string(self, value: str):
+    def _encode_string(self, value: str) -> bytes:
         res = str(len(value)) + ":" + value
         return str.encode(res)
 
-    def _encode_bytes(self, value: str):
+    def _encode_bytes(self, value: bytes) -> bytes:
         result = bytearray()
         result += str.encode(str(len(value)))
         result += b":"
         result += value
         return result
 
-    def _encode_list(self, data):
+    def _encode_list(self, data: list) -> bytes:
         result = bytearray("l", "utf-8")
         result += b"".join([self.encode_next(item) for item in data])
         result += b"e"
@@ -205,6 +201,7 @@ class Encoder:
                 result += key
                 result += value
             else:
-                raise RuntimeError("Bad dict")
+                msg = "Bad dict"
+                raise RuntimeError(msg)
         result += b"e"
         return result

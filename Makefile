@@ -4,7 +4,7 @@ init:
 	@pip install -r requirements.txt
 
 lint:
-	@flake8 .
+	@black .
 
 unit:
 	@python -m unittest
