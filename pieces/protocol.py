@@ -177,7 +177,7 @@ class PeerConnection:
         while "stopped" not in self.my_state:
             # The default state for a connection is that peer is not
             # interested and we are choked
-            # self.my_state.append("choked")
+            self.my_state.append("choked")
 
             # Let the peer know we're interested in downloading pieces
             # await self._send_interested()
@@ -197,6 +197,7 @@ class PeerConnection:
                             await self._send_interested()
                     case Interested():
                         self.peer_state.append("interested")
+                        await self._send_unchoke()
                     case NotInterested():
                         if "interested" in self.peer_state:
                             self.peer_state.remove("interested")
@@ -219,19 +220,23 @@ class PeerConnection:
                         )
                     case Request():
                         data = self.on_request_cb(
-                            self.remote_id, message.index, message.begin, message.length
+                            self.remote_id,
+                            message.index,
+                            message.begin,
+                            message.length,
                         )
                         await self._send_piece(message.index, message.begin, data)
                     case Cancel():
-                        # TODO Add support for sending data
                         logging.info("Ignoring the received Cancel message.")
 
                 # Send block request to remote peer if we're interested
+                logging.debug("checking if we want to request a piece")
                 if (
                     "choked" not in self.my_state
                     and "interested" in self.my_state
                     and "pending_request" not in self.my_state
                 ):
+                    logging.debug("requesting piece")
                     self.my_state.append("pending_request")
                     await self._request_piece()
             self.cancel()
@@ -320,6 +325,12 @@ class PeerConnection:
 
     async def _send_bitfield(self) -> None:
         message = BitField(self.piece_manager.bitfield.bytes)
+        logging.debug("Sending message: %s", message)
+        self.writer.write(message.encode())
+        await self.writer.drain()
+
+    async def _send_unchoke(self) -> None:
+        message = Unchoke()
         logging.debug("Sending message: %s", message)
         self.writer.write(message.encode())
         await self.writer.drain()

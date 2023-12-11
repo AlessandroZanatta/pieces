@@ -109,7 +109,7 @@ class TorrentClient:
             await asyncio.sleep(5)
         # threading.Event().wait()  # stop infinitely
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # noqa: C901
         """Start downloading the torrent held by this client.
 
         This results in connecting to the tracker to retrieve the list of
@@ -189,7 +189,6 @@ class TorrentClient:
         self.peers.extend(new_workers)
         while True:
             await asyncio.sleep(5)
-        # threading.Event().wait()  # stop infinitely
         # await self.stop() # we don't really care about cleanupping before exiting
 
     async def _start_listener(self) -> None:
@@ -255,8 +254,15 @@ class TorrentClient:
         )
 
     def _on_piece_request(
-        self, peer_id: bytes, piece_index: int, block_offset: int, block_length: int
+        self,
+        peer_id: bytes,
+        piece_index: int,
+        block_offset: int,
+        block_length: int,
     ) -> bytes:
         return self.piece_manager.piece_request(
-            peer_id, piece_index, block_offset, block_length
+            peer_id,
+            piece_index,
+            block_offset,
+            block_length,
         )

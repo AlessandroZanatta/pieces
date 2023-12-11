@@ -248,7 +248,7 @@ class PieceManager:
         all_pieces.sort(key=lambda p: p.index)
 
         bitfield = BitArray(
-            length=len(self.torrent.pieces) + (8 - len(self.torrent.pieces) % 8)
+            length=len(self.torrent.pieces) + (8 - len(self.torrent.pieces) % 8),
         )
         for i, p in enumerate(all_pieces):
             if p.index != i:
@@ -366,12 +366,17 @@ class PieceManager:
             return None
 
         block = self._expired_requests(peer_id)
-        if not block:
-            block = self._next_ongoing(peer_id)
-            if not block:
-                block = self._get_rarest_piece(peer_id)
-                if block:
-                    block = block.next_request()
+        if block:
+            return block
+
+        block = self._next_ongoing(peer_id)
+        if block:
+            return block
+
+        piece = self._get_rarest_piece(peer_id)
+        if piece:
+            block = piece.next_request()
+
         return block
 
     def block_received(

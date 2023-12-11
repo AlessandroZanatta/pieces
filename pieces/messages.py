@@ -219,6 +219,9 @@ class Unchoke(PeerMessage):
         <len=0001><id=1>
     """
 
+    def encode(self) -> bytes:
+        return struct.pack(">Ib", 1, PeerMessage.Unchoke)
+
     def __str__(self) -> str:
         return "Unchoke"
 
