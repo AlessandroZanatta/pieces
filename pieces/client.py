@@ -136,9 +136,10 @@ class TorrentClient:
         # The time we last made an announce call (timestamp)
         previous = None
         # Default interval between announce calls (in seconds)
-        interval = 30 * 60
+        interval = 10
 
         while True:
+            logging.debug("Client loop called. Interval: %d", interval)
             if self.piece_manager.complete:
                 logging.info("Torrent fully downloaded!")
                 break
@@ -148,19 +149,27 @@ class TorrentClient:
 
             current = time.time()
             if (not previous) or (previous + interval < current):
+                logging.debug("Connecting to tracker..")
                 response = await self.tracker.connect(
                     first=bool(previous),  # TODO: check this is correct
                     uploaded=self.piece_manager.bytes_uploaded,
                     downloaded=self.piece_manager.bytes_downloaded,
                 )
+                logging.debug("Adding peers from tracker response...")
 
                 if response:
                     previous = current
-                    interval = response.interval
+                    # Ignore interval given by tracker, use our own interval
+                    # interval = response.interval
                     self._empty_queue()
                     for peer in response.peers:
-                        # Do NOT start a connection with myself
-                        if peer[0] not in my_ips():
+                        # TODO: check that we do not connect twice to the same peer (???)
+                        logging.debug("Found peer: %s", peer[0])
+                        # Do NOT start a connection with myself and peers we
+                        # are already connected to
+                        if peer[0] not in my_ips() and peer[0] not in [
+                            peer.ip for peer in self.peers
+                        ]:
                             self.available_peers.put_nowait(peer)
             else:
                 await asyncio.sleep(5)
@@ -231,7 +240,7 @@ class TorrentClient:
         self.piece_manager.close()
         await self.tracker.close()
 
-    def _on_block_retrieved(
+    async def _on_block_retrieved(
         self,
         peer_id: bytes,
         piece_index: int,
@@ -240,6 +249,8 @@ class TorrentClient:
     ) -> None:
         """Callback function called by the `PeerConnection` when a block is
         retrieved from a peer.
+
+        Sends an have message on piece completion
 
         :param peer_id: The id of the peer the block was retrieved from
         :param piece_index: The piece index this block is a part of
@@ -252,6 +263,11 @@ class TorrentClient:
             block_offset=block_offset,
             data=data,
         )
+
+        # If we got a completed piece, inform our peers with an Have message
+        if self.piece_manager.is_piece_complete(piece_index):
+            for peer in self.peers:
+                await peer.send_have(peer_id, piece_index)
 
     def _on_piece_request(
         self,

@@ -19,7 +19,7 @@ import asyncio
 import logging
 import struct
 from asyncio import Queue
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import CancelledError
 
 from pieces.messages import (
@@ -72,7 +72,7 @@ class PeerConnection:
         info_hash: bytes,
         peer_id: bytes,
         piece_manager: PieceManager,
-        on_block_cb: Callable[[bytes, int, int, bytes], None],
+        on_block_cb: Callable[[bytes, int, int, bytes], Awaitable[None]],
         on_request_cb: Callable[[bytes, int, int, int], bytes],
         need_connect: bool = True,  # noqa: FBT001,FBT002
     ) -> None:
@@ -105,6 +105,9 @@ class PeerConnection:
         self.writer: asyncio.StreamWriter
         self.reader: asyncio.StreamReader
 
+        self.ip: str | None = None
+        self.port: int | None = None
+
         # TODO: change this name
         # Whether this PeerConnection connects to peers or waits for
         # external connections
@@ -115,6 +118,14 @@ class PeerConnection:
             self.future = asyncio.ensure_future(self._connect())
         else:
             self.future = asyncio.ensure_future(self._accept())
+
+    @property
+    def is_connected(self):
+        return self.ip != None
+
+    async def send_have(self, peer_id: bytes, piece_index: int) -> None:
+        if self.is_connected and not self.remote_id == peer_id:
+            await self._send_have(piece_index)
 
     async def _connect(self) -> None:
         self.ip, self.port = await self.available_peers.get()
@@ -212,7 +223,7 @@ class PeerConnection:
                         pass
                     case Piece():
                         self.my_state.remove("pending_request")
-                        self.on_block_cb(
+                        await self.on_block_cb(
                             self.remote_id,
                             message.index,
                             message.begin,
@@ -337,6 +348,12 @@ class PeerConnection:
 
     async def _send_piece(self, index: int, begin: int, data: bytes) -> None:
         message = Piece(index, begin, data)
+        logging.debug("Sending message: %s", message)
+        self.writer.write(message.encode())
+        await self.writer.drain()
+
+    async def _send_have(self, index: int) -> None:
+        message = Have(index)
         logging.debug("Sending message: %s", message)
         self.writer.write(message.encode())
         await self.writer.drain()

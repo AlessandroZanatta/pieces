@@ -443,6 +443,16 @@ class PieceManager:
         block_offset: int,
         block_length: int,
     ) -> bytes:
+        """
+        This method must be called when a block request has been received
+        from a peer.
+
+        Checks that the requested piece can actually be served by the current peer
+        and returns the corresponding data, if found. Throws otherwise.
+
+        NOTE: does not conform with BEP-003, does not actually check bandwidth of
+        peer requesting a download from us.
+        """
         msg = "Peer ID not recognized"
         if peer_id not in self.peers:
             raise RuntimeError(msg)
@@ -560,6 +570,12 @@ class PieceManager:
         pos = piece.index * self.torrent.piece_length
         os.lseek(self.fd, pos, os.SEEK_SET)
         piece.read(os.read(self.fd, piece.length))
+
+    def is_piece_complete(self, piece_index: int) -> bool:
+        for piece in self.have_pieces:
+            if piece.index == piece_index and piece.is_complete():
+                return True
+        return False
 
 
 def my_ips() -> list[str]:
