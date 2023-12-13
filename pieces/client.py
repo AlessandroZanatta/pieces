@@ -17,6 +17,7 @@
 
 import asyncio
 import logging
+import os
 import time
 import traceback
 from asyncio import CancelledError, Queue
@@ -136,7 +137,7 @@ class TorrentClient:
         # The time we last made an announce call (timestamp)
         previous = None
         # Default interval between announce calls (in seconds)
-        interval = 10
+        interval = int(os.getenv("TRACKER_INTERVAL", 60))
 
         while True:
             if self.piece_manager.complete:
