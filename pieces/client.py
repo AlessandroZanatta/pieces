@@ -139,7 +139,6 @@ class TorrentClient:
         interval = 10
 
         while True:
-            logging.debug("Client loop called. Interval: %d", interval)
             if self.piece_manager.complete:
                 logging.info("Torrent fully downloaded!")
                 break
@@ -167,10 +166,16 @@ class TorrentClient:
                         logging.debug("Found peer: %s", peer[0])
                         # Do NOT start a connection with myself and peers we
                         # are already connected to
-                        if peer[0] not in my_ips() and peer[0] not in [
-                            peer.ip for peer in self.peers
-                        ]:
-                            self.available_peers.put_nowait(peer)
+                        if peer[0] in my_ips():
+                            logging.info("Skipping %s: self connection", peer[0])
+                            continue
+
+                        if peer[0] in [p.ip for p in self.peers]:
+                            logging.info("Skipping %s: already connected", peer[0])
+                            continue
+
+                        self.available_peers.put_nowait(peer)
+
             else:
                 await asyncio.sleep(5)
 
