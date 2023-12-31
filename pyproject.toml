@@ -49,6 +49,7 @@ ignore = [
     "TRY003",  # avoid long exception messages outside class
     "S324",    # sha1 is insecure (but BitTorrent uses it ç_ç)
     "PLR0913", # too many arguments in function definition
+    "PERF203", # `try`-`except` within a loop incurs performance overhead
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.

@@ -19,7 +19,7 @@ from hashlib import sha1
 from pathlib import Path
 from typing import NamedTuple, cast
 
-from . import bencoding
+from pieces import bencoding
 
 
 # Represents the files within the torrent (i.e. the files to write to disk)

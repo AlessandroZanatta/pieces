@@ -23,6 +23,8 @@ import traceback
 from asyncio import CancelledError, Queue
 from pathlib import Path
 
+from pieces.config import config
+from pieces.lightning import Lightning
 from pieces.piece_manager import PieceManager, my_ips
 from pieces.protocol import PeerConnection
 from pieces.torrent import Torrent
@@ -72,6 +74,12 @@ class TorrentClient:
         # List of peers that have openened a connection to us
         self.available_opened_connections: Queue = Queue()
 
+        self.lightning = (
+            Lightning(len(torrent.pieces), torrent.piece_length)
+            if config.SUPPORTS_LIGHTNING
+            else None
+        )
+
     async def seed(self, filepath: str) -> None:
         """
         Starts seeding the given file.
@@ -90,6 +98,7 @@ class TorrentClient:
                 self.tracker.torrent.info_hash,
                 self.tracker.peer_id,
                 self.piece_manager,
+                self.lightning,
                 self._on_block_retrieved,
                 self._on_piece_request,
                 need_connect=False,  # all workers are listeners
@@ -125,6 +134,7 @@ class TorrentClient:
                 self.tracker.torrent.info_hash,
                 self.tracker.peer_id,
                 self.piece_manager,
+                self.lightning,
                 self._on_block_retrieved,
                 self._on_piece_request,
                 # half workers wait for connections, half open them
@@ -137,7 +147,7 @@ class TorrentClient:
         # The time we last made an announce call (timestamp)
         previous = None
         # Default interval between announce calls (in seconds)
-        interval = int(os.getenv("TRACKER_INTERVAL", 60))
+        interval = int(os.getenv("TRACKER_INTERVAL", "60"))
 
         while True:
             if self.piece_manager.complete:
@@ -163,7 +173,6 @@ class TorrentClient:
                     # interval = response.interval
                     self._empty_queue()
                     for peer in response.peers:
-                        # TODO: check that we do not connect twice to the same peer (???)
                         logging.debug("Found peer: %s", peer[0])
                         # Do NOT start a connection with myself and peers we
                         # are already connected to
@@ -184,24 +193,24 @@ class TorrentClient:
         # TODO: after we're done with downloading, keep at seeding!
         # Replace workers that open connections to workers that
         # wait for connections
-        new_workers = []
+        # new_workers = []
         for worker in self.peers:
             if worker.need_connect:
                 worker.stop()
-
-                new_workers.append(
-                    PeerConnection(
-                        self.available_peers,
-                        self.available_opened_connections,
-                        self.tracker.torrent.info_hash,
-                        self.tracker.peer_id,
-                        self.piece_manager,
-                        self._on_block_retrieved,
-                        self._on_piece_request,
-                        need_connect=True,
-                    ),
-                )
-        self.peers.extend(new_workers)
+        #         new_workers.append(
+        #             PeerConnection(
+        #                 self.available_peers,
+        #                 self.available_opened_connections,
+        #                 self.tracker.torrent.info_hash,
+        #                 self.tracker.peer_id,
+        #                 self.piece_manager,
+        #                 self.lightning,
+        #                 self._on_block_retrieved,
+        #                 self._on_piece_request,
+        #                 need_connect=True,
+        #             ),
+        #         )
+        # self.peers.extend(new_workers)
         while True:
             await asyncio.sleep(5)
         # await self.stop() # we don't really care about cleanupping before exiting

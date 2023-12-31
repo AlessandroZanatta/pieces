@@ -10,17 +10,11 @@ from typing import cast
 import ifaddr
 from bitstring import BitArray  # type: ignore
 
+from pieces.config import config
 from pieces.torrent import Torrent
 
-# The default request size for blocks of pieces is 2^14 bytes.
-#
-# NOTE: The official specification states that 2^15 is the default request
-#       size - but in reality all implementations use 2^14. See the
-#       unofficial specification for more details on this matter.
-#
-#       https://wiki.theory.org/BitTorrentSpecification
-#
-REQUEST_SIZE = 2**14
+# Used very frequently, therefore we give this a name
+REQUEST_SIZE = config.REQUEST_SIZE
 
 
 class Block:
@@ -277,6 +271,11 @@ class PieceManager:
         return False
 
     def seed(self, filepath: str) -> None:
+        """
+        Starts seeding from the given filepath
+        Populates all the pieces and blocks with the correct content
+        and checks that it indeed is correct
+        """
         self.missing_pieces = []
         os.close(self.fd)
         self.fd = os.open(filepath, os.O_RDWR)

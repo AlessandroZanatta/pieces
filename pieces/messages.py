@@ -7,6 +7,7 @@ import struct
 
 import bitstring  # type: ignore
 
+from pieces.config import config
 from pieces.piece_manager import REQUEST_SIZE
 
 
@@ -43,6 +44,8 @@ class PeerMessage:
     Port = 9
     Handshake = None  # Handshake is not really part of the messages
     KeepAlive = None  # Keep-alive has no ID according to spec
+    PublicKey = None
+    Invoice = 10
 
     def encode(self) -> bytes:
         """Encodes this object instance to the raw bytes representing the entire
@@ -80,7 +83,12 @@ class Handshake(PeerMessage):
 
     length = 49 + 19
 
-    def __init__(self, info_hash: bytes, peer_id: bytes) -> None:
+    def __init__(
+        self,
+        info_hash: bytes,
+        peer_id: bytes,
+        reserved: bytes | None = None,
+    ) -> None:
         """Construct the handshake message
 
         :param info_hash: The SHA1 hash for the info dict
@@ -92,16 +100,19 @@ class Handshake(PeerMessage):
             peer_id = peer_id.encode("utf-8")
         self.info_hash = info_hash
         self.peer_id = peer_id
+        self.reserved = reserved
 
     def encode(self) -> bytes:
         """Encodes this object instance to the raw bytes representing the entire
         message (ready to be transmitted).
         """
         return struct.pack(
-            ">B19s8x20s20s",
+            ">B19sQ20s20s",
             19,  # Single byte (B)
             b"BitTorrent protocol",  # String 19s
-            # Reserved 8x (pad byte, no value)
+            1 << config.LIGHTNING_SUPPORT_BIT
+            if config.SUPPORTS_LIGHTNING
+            else 0,  # Reserved
             self.info_hash,  # String 20s
             self.peer_id,
         )  # String 20s
@@ -114,8 +125,8 @@ class Handshake(PeerMessage):
         logging.debug("Decoding Handshake of length: %d", len(data))
         if len(data) < (49 + 19):
             return None
-        parts = struct.unpack(">B19s8x20s20s", data)
-        return cls(info_hash=parts[2], peer_id=parts[3])
+        parts = struct.unpack(">B19s8s20s20s", data)
+        return cls(info_hash=parts[3], peer_id=parts[4], reserved=parts[2])
 
     def __str__(self) -> str:
         return "Handshake"
@@ -180,7 +191,7 @@ class Interested(PeerMessage):
         """Encodes this object instance to the raw bytes representing the entire
         message (ready to be transmitted).
         """
-        return struct.pack(">Ib", 1, PeerMessage.Interested)  # Message length
+        return struct.pack(">Ib", 1, PeerMessage.Interested)
 
     def __str__(self) -> str:
         return "Interested"
@@ -194,6 +205,12 @@ class NotInterested(PeerMessage):
     Message format:
         <len=0001><id=3>
     """
+
+    def encode(self) -> bytes:
+        """Encodes this object instance to the raw bytes representing the entire
+        message (ready to be transmitted).
+        """
+        return struct.pack(">Ib", 1, PeerMessage.NotInterested)
 
     def __str__(self) -> str:
         return "NotInterested"
@@ -235,7 +252,7 @@ class Have(PeerMessage):
         self.index = index
 
     def encode(self) -> bytes:
-        return struct.pack(">IbI", 5, PeerMessage.Have, self.index)  # Message length
+        return struct.pack(">IbI", 5, PeerMessage.Have, self.index)
 
     @classmethod
     def decode(cls, data: bytes) -> Have:
@@ -373,3 +390,63 @@ class Cancel(PeerMessage):
 
     def __str__(self) -> str:
         return "Cancel"
+
+
+class Invoice(PeerMessage):
+    """The invoice sent by a node that just sent a Piece message.
+    The receiving peer MUST pay this invoice before asking for more blocks.
+    """
+
+    PREFIX_LENGTH = 4
+
+    def __init__(self, invoice: bytes) -> None:
+        self.invoice = invoice
+
+    def encode(self) -> bytes:
+        length = len(self.invoice)
+        return struct.pack(
+            ">Ib" + str(length) + "s", length + 1, PeerMessage.Invoice, self.invoice,
+        )
+
+    @classmethod
+    def decode(cls, data: bytes) -> Invoice:
+        length = struct.unpack(">I", data[:4])[0]
+        logging.debug("Decoding Invoice of length: %d", length)
+
+        parts = struct.unpack(">Ib" + str(length - 1) + "s", data)
+        return cls(parts[2])
+
+    def __str__(self) -> str:
+        return "Invoice"
+
+
+class PublicKey(PeerMessage):
+    """The public key message belongs to the lightning network extensions.
+    This message informs the remote peer of our lightning network address
+
+    Message format:
+        <length prefix><id=10><public key>"""
+
+    PREFIX_LENGTH = 4
+
+    def __init__(self, public_key: bytes) -> None:
+        self.public_key = public_key
+
+    def encode(self) -> bytes:
+        length = len(self.public_key)
+        return struct.pack(
+            ">I" + str(length) + "s",
+            length,
+            self.public_key,
+        )
+
+    @classmethod
+    def decode(cls, data: bytes) -> PublicKey:
+        length = struct.unpack(">I", data[:4])[0]
+        logging.debug("Decoding PublicKey of length: %d", length)
+
+        parts = struct.unpack(">I" + str(length) + "s", data)
+        return cls(parts[1])
+
+    def __str__(self) -> str:
+        return "PublicKey"
