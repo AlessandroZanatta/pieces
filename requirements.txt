@@ -3,5 +3,5 @@ bitstring==3.1.5
 aiohttp==3.8.6
 Pyro5==5.15
 ifaddr==0.2.0 
-pyln-client==23.8
+pyln-client==23.11
 pydantic-settings==2.1.0

@@ -13,9 +13,10 @@ from pieces.config import config
 class LightningData:
     """Collects the state of another lightning network peer"""
 
-    def __init__(self, peer_id: str, address_hint: str) -> None:
+    def __init__(self, peer_id: str, address_hint: str, payment_frequency: int) -> None:
         self.peer_id = peer_id
         self.address_hint = address_hint
+        self.payment_frequency = payment_frequency
 
         self.route_exists = False
         self.blacklisted = False
@@ -82,17 +83,20 @@ class Lightning:
         return f"{self.info['id']}@{self.info['alias']}"
 
     def register_peer(
-        self,
-        remote_id: bytes,
-        address: str,
+        self, remote_id: bytes, address: str, payment_frequency: int
     ) -> None:
         """
         Registers a peer in the list of known peers. This is used
         to enable blacklisting peers that do not respect the protocol
         """
         peer_id, hint = address.split("@")
-        self.peers[remote_id] = LightningData(peer_id, hint)
-        logging.info("Registered peer %s@%s", peer_id, hint)
+        self.peers[remote_id] = LightningData(peer_id, hint, payment_frequency)
+        logging.info(
+            "Registered peer %s@%s (payment once every %d subpieces)",
+            peer_id,
+            hint,
+            payment_frequency,
+        )
 
     def get_peer(self, remote_id: bytes) -> LightningData | None:
         """
@@ -126,6 +130,7 @@ class Lightning:
         """
         Adds remote_id to the local blacklist
         """
+        logging.critical(f"Blacklisting peer {remote_id} due to missing payment!")
         try:
             self.peers[remote_id].blacklisted = True
         except KeyError as e:
@@ -166,7 +171,7 @@ class Lightning:
 
         # Try finding a route first
         peer.route_exists = self.route_exists(
-            peer.peer_id,
+            peer.address.decode(),
             self.total_price,
             risk_factor,
         )
@@ -248,15 +253,19 @@ class Lightning:
                     config.BLOCK_PRICE_MSAT,
                     label,
                     description,
+                    expiry=config.INVOICE_EXPIRY,
                 )["bolt11"],
             ),
             label,
         )
 
     async def async_wait_invoice(self, label: str) -> bool:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, self.rpc.waitinvoice, label)
-        return result["status"] == "paid" if "status" in result else False
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self.rpc.waitinvoice, label)
+            return result["status"] == "paid" if "status" in result else False
+        except RpcError:
+            return False
 
     async def wait_invoice(
         self,
@@ -314,6 +323,5 @@ class Lightning:
         if not reserved:
             return False
 
-        logging.info("Handshake message received: %s", reserved)
-        logging.critical("handshake")
+        logging.info("Reserved bytes: %s", reserved)
         return reserved[5] == config.LIGHTNING_BYTE_VALUE

@@ -37,7 +37,7 @@ from pieces.messages import (
     NotInterested,
     PeerMessage,
     Piece,
-    PublicKey,
+    LNHandshake,
     Request,
     Unchoke,
 )
@@ -85,8 +85,8 @@ class PeerConnection:
         peer_id: bytes,
         piece_manager: PieceManager,
         lightning: Lightning | None,
-        on_block_cb: Callable[[bytes, int, int, bytes], Awaitable[None]],
-        on_request_cb: Callable[[bytes, int, int, int], bytes],
+        on_block_cb: Callable[[bytes, int, int, bytes], Awaitable[int | None]],
+        on_request_cb: Callable[[bytes, int, int, int], tuple[bytes, int]],
         need_connect: bool = True,  # noqa: FBT001,FBT002
     ) -> None:
         """Constructs a PeerConnection and add it to the asyncio event-loop.
@@ -165,11 +165,16 @@ class PeerConnection:
             #     )
 
             # If lightning is supported, exchange public keys
+            payment_frequency = None
             if self.lightning and self.supports_lightning:
-                buffer = await self._receive_public_key(buffer)
-                await self._send(PublicKey(self.lightning.public_key.encode()))
+                payment_frequency, buffer = await self._receive_public_key(buffer)
+                await self._send(
+                    LNHandshake(
+                        config.PAYMENT_FREQUENCY, self.lightning.public_key.encode()
+                    )
+                )
 
-            await self._start(buffer)
+            await self._start(buffer, payment_frequency)
         except ProtocolError:
             logging.exception("Protocol error")
         except (ConnectionRefusedError, TimeoutError):
@@ -193,11 +198,16 @@ class PeerConnection:
             await self._send(Handshake(self.info_hash, self.peer_id))
 
             # If lightning is supported, exchange public keys
+            payment_frequency = None
             if self.lightning and self.supports_lightning:
-                await self._send(PublicKey(self.lightning.public_key.encode()))
-                buffer = await self._receive_public_key(buffer)
+                await self._send(
+                    LNHandshake(
+                        config.PAYMENT_FREQUENCY, self.lightning.public_key.encode()
+                    )
+                )
+                payment_frequency, buffer = await self._receive_public_key(buffer)
 
-            await self._start(buffer)
+            await self._start(buffer, payment_frequency)
         except ProtocolError:
             logging.exception("Protocol error")
         except (ConnectionRefusedError, TimeoutError):
@@ -209,11 +219,12 @@ class PeerConnection:
             self.cancel()
             raise
 
-    async def _start(self, buffer: bytes) -> None:
+    async def _start(self, buffer: bytes, payment_frequency: int | None = None) -> None:
         logging.info("Handshake done with %s:%d, sending bitfield", self.ip, self.port)
         await self._send(BitField(self.piece_manager.bitfield.bytes))
         logging.info("Bitfield sent to %s:%d", self.ip, self.port)
 
+        received_counter: int | None = None
         while State.STOPPED not in self.my_state:
             # The default state for a connection is that peer is not
             # interested and we are choked, unless we are using lightning extension
@@ -264,14 +275,19 @@ class PeerConnection:
                     case KeepAlive():
                         pass
                     case Piece():
-                        if not self.supports_lightning:
-                            self.my_state.remove(State.PENDING)
-                        await self.on_block_cb(
+                        received_counter = await self.on_block_cb(
                             self.remote_id,
                             message.index,
                             message.begin,
                             message.block,
                         )
+
+                        if not self.supports_lightning or (
+                            received_counter
+                            and payment_frequency
+                            and received_counter % payment_frequency != 0
+                        ):
+                            self.my_state.remove(State.PENDING)
 
                         if not self.piece_manager.interested(self.remote_id):
                             self.my_state.remove(State.INTERESTED)
@@ -281,14 +297,23 @@ class PeerConnection:
                             raise RuntimeError(
                                 "Clients that do support lightning should not receive invoices",
                             )
-                        # Note: if there's no open channel/route that can be readily
-                        # used this function can spend a LOT of time in await (half
-                        # an hour on standard Bitcoin's chain)
-                        await self.lightning.pay_block(
-                            self.remote_id,
-                            message.invoice.decode(),
-                        )
-                        self.my_state.remove(State.PENDING)
+
+                        if (
+                            received_counter
+                            and payment_frequency
+                            and received_counter % payment_frequency == 0
+                        ):
+                            # Note: if there's no open channel/route that can be readily
+                            # used this function can spend a LOT of time in await (half
+                            # an hour on standard Bitcoin's chain)
+                            await self.lightning.pay_block(
+                                self.remote_id,
+                                message.invoice.decode(),
+                            )
+                            self.my_state.remove(State.PENDING)
+                        else:
+                            msg = f"Payment request received too early from remote peer: expected one request every {payment_frequency} subpieces, received after {received_counter} subpieces"
+                            raise RuntimeError(msg)
                     case Request():
                         if self.lightning and self.supports_lightning:
                             # If a client makes a request for a piece while the previous
@@ -302,14 +327,22 @@ class PeerConnection:
                                 )
                                 # self.lightning.blacklist(self.remote_id)
                                 self.cancel()
-                        data = self.on_request_cb(
+                        data, sent_counter = self.on_request_cb(
                             self.remote_id,
                             message.index,
                             message.begin,
                             message.length,
                         )
                         await self._send(Piece(message.index, message.begin, data))
-                        if self.lightning and self.supports_lightning:
+
+                        if (
+                            self.lightning
+                            and self.supports_lightning
+                            # The remote peer has accepted to pay once every config.PAYMENT_FREQUENCY subpieces
+                            # I send him, hence we check if it's time to request a payment
+                            and payment_frequency
+                            and sent_counter % config.PAYMENT_FREQUENCY == 0
+                        ):
                             logging.debug("Creating invoice")
                             invoice, label = self.lightning.create_invoice(
                                 self.remote_id,
@@ -330,10 +363,11 @@ class PeerConnection:
                                 )
                                 self.lightning.blacklist(self.remote_id)
                                 self.cancel()
-                            logging.debug(
-                                "Invoice paied by remote peer %s",
-                                self.remote_id,
-                            )
+                            else:
+                                logging.debug(
+                                    "Invoice paied by remote peer %s",
+                                    self.remote_id,
+                                )
                     case Cancel():
                         logging.info("Ignoring the received Cancel message.")
 
@@ -428,12 +462,12 @@ class PeerConnection:
         # those bytes to parse the next message.
         return buffer[Handshake.length :]
 
-    async def _receive_public_key(self, buffer: bytes) -> bytes:
-        buffer = await self._receive(buffer, PublicKey.PREFIX_LENGTH)
-        total_length = PublicKey.PREFIX_LENGTH + struct.unpack(">I", buffer[:4])[0]
+    async def _receive_public_key(self, buffer: bytes) -> tuple[int, bytes]:
+        buffer = await self._receive(buffer, LNHandshake.PREFIX_LENGTH)
+        total_length = LNHandshake.PREFIX_LENGTH + struct.unpack(">I", buffer[:4])[0]
         buffer = await self._receive(buffer, total_length)
 
-        response = PublicKey.decode(buffer[:total_length])
+        response = LNHandshake.decode(buffer[:total_length])
         if not response:
             msg = "Unable to receive and parse a public key"
             raise ProtocolError(msg)
@@ -443,10 +477,12 @@ class PeerConnection:
                 msg = f"Blacklisted peer: {self.remote_id!r} ({response.public_key!r})"
                 raise ProtocolError(msg)
 
-            self.lightning.register_peer(self.remote_id, response.public_key.decode())
+            self.lightning.register_peer(
+                self.remote_id, response.public_key.decode(), response.frequency
+            )
 
         # return the remaining buffer as we may have read too much
-        return buffer[total_length:]
+        return response.frequency, buffer[total_length:]
 
     async def _receive(self, buffer: bytes, length: int, max_tries: int = 10) -> bytes:
         tries = 1

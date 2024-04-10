@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Fixed block price in millisatoshis
     MIN_CHANNEL_MSAT: int = 20000  # required amount for channel opening
     BLOCK_PRICE_MSAT: int = 1  # ~0.00004€ per block
+    PAYMENT_FREQUENCY: int = 5
     INVOICE_EXPIRY: int = 60  # 60 seconds
 
     WAIT_FUNDCHANNEL_SLEEP: float = 5.0

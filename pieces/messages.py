@@ -405,7 +405,10 @@ class Invoice(PeerMessage):
     def encode(self) -> bytes:
         length = len(self.invoice)
         return struct.pack(
-            ">Ib" + str(length) + "s", length + 1, PeerMessage.Invoice, self.invoice,
+            ">Ib" + str(length) + "s",
+            length + 1,
+            PeerMessage.Invoice,
+            self.invoice,
         )
 
     @classmethod
@@ -420,33 +423,35 @@ class Invoice(PeerMessage):
         return "Invoice"
 
 
-class PublicKey(PeerMessage):
+class LNHandshake(PeerMessage):
     """The public key message belongs to the lightning network extensions.
     This message informs the remote peer of our lightning network address
 
     Message format:
-        <length prefix><id=10><public key>"""
+        <length prefix><id=10><payment frequency><public key>"""
 
     PREFIX_LENGTH = 4
 
-    def __init__(self, public_key: bytes) -> None:
+    def __init__(self, frequency: int, public_key: bytes) -> None:
         self.public_key = public_key
+        self.frequency = frequency
 
     def encode(self) -> bytes:
         length = len(self.public_key)
         return struct.pack(
-            ">I" + str(length) + "s",
-            length,
+            ">II" + str(length) + "s",
+            length + 4,
+            self.frequency,
             self.public_key,
         )
 
     @classmethod
-    def decode(cls, data: bytes) -> PublicKey:
+    def decode(cls, data: bytes) -> LNHandshake:
         length = struct.unpack(">I", data[:4])[0]
-        logging.debug("Decoding PublicKey of length: %d", length)
+        logging.debug("Decoding LNHandshake of length: %d", length)
 
-        parts = struct.unpack(">I" + str(length) + "s", data)
-        return cls(parts[1])
+        parts = struct.unpack(">II" + str(length - 4) + "s", data)
+        return cls(parts[1], parts[2])
 
     def __str__(self) -> str:
-        return "PublicKey"
+        return "LNHandshake"

@@ -146,6 +146,15 @@ class PendingRequest:
         self.added = new
 
 
+class PeerData:
+    def __init__(
+        self, bitfield: BitArray, sent_counter: int = 0, received_counter: int = 0
+    ):
+        self.bitfield = bitfield
+        self.sent_counter = sent_counter
+        self.received_counter = received_counter
+
+
 class PieceManager:
     """The PieceManager is responsible for keeping track of all the available
     pieces for the connected peers as well as the pieces we have available for
@@ -157,7 +166,7 @@ class PieceManager:
 
     def __init__(self, torrent: Torrent) -> None:
         self.torrent: Torrent = torrent
-        self.peers: dict = {}
+        self.peers: dict[bytes, PeerData] = {}
         self.pending_blocks: list[PendingRequest] = []
         self.missing_pieces: list[Piece] = self._initiate_pieces()
         self.ongoing_pieces: list[Piece] = []
@@ -258,7 +267,7 @@ class PieceManager:
 
     def interested(self, remote_id: bytes) -> bool:
         """Whether we are interested in the pieces the remote peer has"""
-        peer_bitfield = self.peers[remote_id]
+        peer_bitfield = self.peers[remote_id].bitfield
         our_bitfield = self.bitfield
 
         if len(peer_bitfield) != len(our_bitfield):
@@ -328,14 +337,15 @@ class PieceManager:
 
     def add_peer(self, peer_id: bytes, bitfield: BitArray) -> None:
         """Adds a peer and the bitfield representing the pieces the peer has."""
-        self.peers[peer_id] = bitfield
+        logging.info(f"Added peer ({peer_id}) to list of connected peers!")
+        self.peers[peer_id] = PeerData(bitfield)
 
     def update_peer(self, peer_id: bytes, index: int) -> None:
         """Updates the information about which pieces a peer has (reflects a Have
         message).
         """
         if peer_id in self.peers:
-            self.peers[peer_id][index] = 1
+            self.peers[peer_id].bitfield[index] = 1
 
     def remove_peer(self, peer_id: bytes) -> None:
         """Tries to remove a previously added peer (e.g. used if a peer connection
@@ -384,7 +394,7 @@ class PieceManager:
         piece_index: int,
         block_offset: int,
         data: bytes,
-    ) -> None:
+    ) -> int | None:
         """This method must be called when a block has successfully been retrieved
         by a peer.
 
@@ -394,7 +404,7 @@ class PieceManager:
         disk and the piece is indicated as Have.
         """
         logging.debug(
-            "Received block %d for piece %d " "from peer %s: ",
+            "Received block %d for piece %d from peer %s: ",
             block_offset,
             piece_index,
             peer_id,
@@ -432,6 +442,8 @@ class PieceManager:
                 else:
                     logging.info("Discarding corrupt piece %d", piece.index)
                     piece.reset()
+            self.peers[peer_id].received_counter += 1
+            return self.peers[peer_id].received_counter
         else:
             logging.warning("Trying to update piece that is not ongoing!")
 
@@ -441,7 +453,7 @@ class PieceManager:
         piece_index: int,
         block_offset: int,
         block_length: int,
-    ) -> bytes:
+    ) -> tuple[bytes, int]:
         """
         This method must be called when a block request has been received
         from a peer.
@@ -453,6 +465,7 @@ class PieceManager:
         peer requesting a download from us.
         """
         msg = "Peer ID not recognized"
+        logging.debug(f"peers: {self.peers}")
         if peer_id not in self.peers:
             raise RuntimeError(msg)
 
@@ -473,7 +486,8 @@ class PieceManager:
                     msg = "Requested block length not compatible"
                     break
 
-                return block.data
+                self.peers[peer_id].sent_counter += 1
+                return block.data, self.peers[peer_id].sent_counter
 
             break
 
@@ -489,7 +503,7 @@ class PieceManager:
         current = int(round(time.time() * 1000))
         for request in self.pending_blocks:
             if (
-                self.peers[peer_id][request.block.piece]
+                self.peers[peer_id].bitfield[request.block.piece]
                 and request.added + self.max_pending_time < current
             ):
                 logging.info(
@@ -507,7 +521,7 @@ class PieceManager:
         requested or None if no block is left to be requested.
         """
         for piece in self.ongoing_pieces:
-            if self.peers[peer_id][piece.index]:
+            if self.peers[peer_id].bitfield[piece.index]:
                 # Is there any blocks left to request in this piece?
                 block = piece.next_request()
                 if block:
@@ -524,10 +538,10 @@ class PieceManager:
         """
         piece_count: dict[Piece, int] = {}
         for piece in self.missing_pieces:
-            if not self.peers[peer_id][piece.index]:
+            if not self.peers[peer_id].bitfield[piece.index]:
                 continue
             for p in self.peers:
-                if self.peers[p][piece.index]:
+                if self.peers[p].bitfield[piece.index]:
                     try:
                         piece_count[piece] += 1
                     except KeyError:
@@ -550,7 +564,7 @@ class PieceManager:
         that piece, rather get the next missing piece.
         """
         for index, piece in enumerate(self.missing_pieces):
-            if self.peers[peer_id][piece.index]:
+            if self.peers[peer_id].bitfield[piece.index]:
                 # Move this piece from missing to ongoing
                 missing_piece = self.missing_pieces.pop(index)
                 self.ongoing_pieces.append(missing_piece)

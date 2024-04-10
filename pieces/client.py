@@ -261,7 +261,7 @@ class TorrentClient:
         piece_index: int,
         block_offset: int,
         data: bytes,
-    ) -> None:
+    ) -> int | None:
         """Callback function called by the `PeerConnection` when a block is
         retrieved from a peer.
 
@@ -272,7 +272,7 @@ class TorrentClient:
         :param block_offset: The block offset within its piece
         :param data: The binary data retrieved
         """
-        self.piece_manager.block_received(
+        received_counter = self.piece_manager.block_received(
             peer_id=peer_id,
             piece_index=piece_index,
             block_offset=block_offset,
@@ -284,13 +284,15 @@ class TorrentClient:
             for peer in self.peers:
                 await peer.send_have(peer_id, piece_index)
 
+        return received_counter
+
     def _on_piece_request(
         self,
         peer_id: bytes,
         piece_index: int,
         block_offset: int,
         block_length: int,
-    ) -> bytes:
+    ) -> tuple[bytes, int]:
         return self.piece_manager.piece_request(
             peer_id,
             piece_index,
