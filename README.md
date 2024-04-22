@@ -17,7 +17,7 @@ Current features:
 
 - [x] Download pieces (leeching)
 - [x] Contact tracker periodically
-- [ ] Seed (upload) pieces
+- [x] Seed (upload) pieces
 - [ ] Support multi-file torrents
 - [ ] Resume a download
 
@@ -26,9 +26,8 @@ it, steal from it, improve it, laugh at it or just ignore it.
 
 Known issues:
 
-* Sometimes the client hangs at startup. It seems to relate to the
+- Sometimes the client hangs at startup. It seems to relate to the
   number of concurrent peer connections.
-
 
 ## Getting started
 
@@ -44,7 +43,6 @@ In order to download a torrent file, run this command:
 If everything goes well, your torrent should be downloaded and the
 program terminated. You can stop the client using `Ctrl + C`.
 
-
 ## Design considerations
 
 The purpose with implementing this client was to learn myself some
@@ -56,21 +54,19 @@ not bothering about efficiency or performance. E.g. the pieces are all
 requested in order, not implementing a _rares first_ algorithm, and the
 pieces are all kept in memory until the entire torrent is downloaded.
 
-
 ### Code walkthrough
 
 The `pieces.client.TorrentClient` is the center piece, it:
 
-* Connects to the tracker in order to receive the peers to connect to.
+- Connects to the tracker in order to receive the peers to connect to.
 
-* Based on that result, creates a Queue of peers that can be connected
+- Based on that result, creates a Queue of peers that can be connected
   to.
 
-* Determine the order in which the pieces should be requested from the
+- Determine the order in which the pieces should be requested from the
   remote peers.
 
-* Shuts down the client once the download is complete.
-
+- Shuts down the client once the download is complete.
 
 The strategy on which piece to request next and the assembly of
 retrieved pieces is implemented in the `pieces.client.PieceManager`. As
@@ -96,28 +92,26 @@ with a `encode` and a `decode` method. However, since this client
 currently does not support seeding - not all of the messages goes in
 both ways.
 
-
 ## References
 
 There is plenty of information on how to write a BitTorrent client
 available on the Internet. These two articles were the real enablers
 for my implementation:
 
-* http://www.kristenwidman.com/blog/33/how-to-write-a-bittorrent-client-part-1/
+- http://www.kristenwidman.com/blog/33/how-to-write-a-bittorrent-client-part-1/
 
-* https://wiki.theory.org/BitTorrentSpecification
+- https://wiki.theory.org/BitTorrentSpecification
 
 Asyncio is fairly new and I have not seen that many articles about it,
 at least not where the code examples are a little bit more elaborate
 than having a few coroutines sleep. Out of the ones I read and can
 recommend these are on the top of my list:
 
-* http://www.snarky.ca/how-the-heck-does-async-await-work-in-python-3-5
+- http://www.snarky.ca/how-the-heck-does-async-await-work-in-python-3-5
 
-* http://www.pythonsandbarracudas.com/blog/2015/11/22/developing-a-computational-pipeline-using-the-asyncio-module-in-python-3
+- http://www.pythonsandbarracudas.com/blog/2015/11/22/developing-a-computational-pipeline-using-the-asyncio-module-in-python-3
 
-* http://dabeaz.com/coroutines/Coroutines.pdf
-
+- http://dabeaz.com/coroutines/Coroutines.pdf
 
 # License
 

@@ -110,9 +110,9 @@ class Handshake(PeerMessage):
             ">B19sQ20s20s",
             19,  # Single byte (B)
             b"BitTorrent protocol",  # String 19s
-            1 << config.LIGHTNING_SUPPORT_BIT
-            if config.SUPPORTS_LIGHTNING
-            else 0,  # Reserved
+            (
+                1 << config.LIGHTNING_SUPPORT_BIT if config.SUPPORTS_LIGHTNING else 0
+            ),  # Reserved
             self.info_hash,  # String 20s
             self.peer_id,
         )  # String 20s

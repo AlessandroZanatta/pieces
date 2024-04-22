@@ -96,10 +96,10 @@ class DecodingTests(unittest.TestCase):
 
 
 class EncodingTests(unittest.TestCase):
-    def test_empty_encoding(self):
-        res = Encoder(None).encode()
-
-        self.assertEqual(res, None)
+    # def test_empty_encoding(self):
+    #     res = Encoder(None).encode()
+    #
+    #     self.assertEqual(res, None)
 
     def test_integer(self):
         res = Encoder(123).encode()

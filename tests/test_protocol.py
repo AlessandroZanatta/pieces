@@ -57,7 +57,8 @@ class HandshakeTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01", handshake.info_hash,
+            b"CDP;~y~\xbf1X#'\xa5\xba\xae5\xb1\x1b\xda\x01",
+            handshake.info_hash,
         )
         self.assertEqual(b"-qB3200-iTiX3rvfzMpr", handshake.peer_id)
 
@@ -95,7 +96,8 @@ class PieceTests(unittest.TestCase):
         piece = Piece(0, 0, b"ok")
 
         self.assertEqual(
-            piece.encode(), b"\x00\x00\x00\x0b\x07\x00\x00\x00\x00\x00\x00\x00\x00ok",
+            piece.encode(),
+            b"\x00\x00\x00\x0b\x07\x00\x00\x00\x00\x00\x00\x00\x00ok",
         )
 
     def test_can_parse_request(self):

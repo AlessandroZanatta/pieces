@@ -17,7 +17,7 @@
 
 import unittest
 
-from pieces.client import Block, Piece
+from pieces.piece_manager import Block, Piece
 
 from . import no_logging
 
